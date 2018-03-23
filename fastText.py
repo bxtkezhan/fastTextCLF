@@ -8,7 +8,7 @@ import  keras.backend as K
 
 import numpy as np
 
-import pickle
+import gzip, pickle
 
 
 class Text2Dataset:
@@ -17,7 +17,6 @@ class Text2Dataset:
         self.label_prefix = label_prefix
         self.minCount = minCount
 
-        self.vocab = None
         self.word2idx = None
         self.words2idx = None
         self.label2idx = None
@@ -69,13 +68,12 @@ class Text2Dataset:
 
         self.label2idx = {label: idx for idx, label in enumerate(label_words_dict)}
         self.idx2label = {self.label2idx[label]: label for label in self.label2idx}
-        self.vocab = set(' '.join(words_list).split())
-        self.word2idx = {word: idx for idx, word in enumerate(self.vocab)}
-        self.words2idx = lambda words: [self.word2idx[word] for word in words.split() if word in self.vocab]
+        self.word2idx = {word: idx for idx, word in enumerate(set(' '.join(words_list).split()))}
+        self.words2idx = lambda words: [self.word2idx[word] for word in words.split() if word in self.word2idx]
 
         self.train_X = [self.words2idx(words) for words in words_list]
         self.train_y = [self.label2idx[label] for label in label_list]
-        self.max_features = len(self.vocab)
+        self.max_features = len(self.word2idx)
 
         if self.wordNgrams > 1:
             print('Adding {}-gram features'.format(self.wordNgrams))
@@ -118,14 +116,14 @@ class FastText:
             self.num_classes = None
             self.model = None
         else:
-            (wordNgrams, label_prefix, minCount, vocab, word2idx, label2idx, idx2label, token_indice,
+            (wordNgrams, label_prefix, minCount, word2idx, label2idx, token_indice,
              self.max_features, self.maxlen, self.batch_size, self.embedding_dims,
              self.epochs, self.lr, self.num_classes, model_weights) = args
 
             self.text2Dataset = Text2Dataset(wordNgrams, label_prefix, minCount)
-            self.text2Dataset.words2idx = lambda words: [word2idx[word] for word in words.split() if word in vocab]
+            self.text2Dataset.words2idx = lambda words: [word2idx[word] for word in words.split() if word in word2idx]
             self.text2Dataset.label2idx = label2idx
-            self.text2Dataset.idx2label = idx2label
+            self.text2Dataset.idx2label = {label2idx[label]: label for label in label2idx}
             self.text2Dataset.token_indice = token_indice
             self.model = self.build_model(model_weights)
 
@@ -189,11 +187,11 @@ class FastText:
 
     def save_model(self, path):
         args = (self.text2Dataset.wordNgrams, self.text2Dataset.label_prefix,
-                self.text2Dataset.minCount, self.text2Dataset.vocab, self.text2Dataset.word2idx,
-                self.text2Dataset.label2idx, self.text2Dataset.idx2label, self.text2Dataset.token_indice,
+                self.text2Dataset.minCount, self.text2Dataset.word2idx,
+                self.text2Dataset.label2idx, self.text2Dataset.token_indice,
                 self.max_features, self.maxlen, self.batch_size, self.embedding_dims,
                 self.epochs, self.lr, self.num_classes, self.model.get_weights())
-        with open(path, 'wb') as f:
+        with gzip.open(path, 'wb') as f:
             pickle.dump(args, f)
 
     def predict(self, text, k=1):
@@ -211,7 +209,7 @@ def train_supervised(input, lr=0.01, dim=100, epoch=5, minCount=1, wordNgrams=1,
     return fastText
 
 def load_model(path):
-    with open(path, 'rb') as f:
+    with gzip.open(path, 'rb') as f:
         args = pickle.load(f)
 
     fastText = FastText(args=args)
@@ -220,7 +218,7 @@ def load_model(path):
 
 if __name__ == '__main__':
     data_path = './classifier_data.txt'
-    model_path = '/tmp/FastText.bin'
+    model_path = 'tmp/FastText.bin.gz'
     text = '''birchas chaim , yeshiva birchas chaim is a orthodox jewish mesivta high school in 
     lakewood township new jersey . it was founded by rabbi shmuel zalmen stein in 2001 after his 
     father rabbi chaim stein asked him to open a branch of telshe yeshiva in lakewood . 
